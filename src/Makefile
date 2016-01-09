@@ -1,4 +1,4 @@
-CROSS_COMPILE_DIR := /usr/bin
+CROSS_COMPILE_DIR := /usr/local/cross/bin
 PREFIX := x86_64-pc-linux-
 
 CC      := $(CROSS_COMPILE_DIR)/$(PREFIX)gcc

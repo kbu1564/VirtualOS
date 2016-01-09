@@ -1,4 +1,4 @@
-[org 0x7c00]
+[org 0x7C00]
 [bits 16]
 
 jmp _start
@@ -42,6 +42,7 @@ _start:
   mov ss, ax
   mov fs, ax
   mov gs, ax
+  mov sp, 0xFF00
 
   ; boot(0x7c00) -> booting!!
   ; video memory(0xb8000) 여기서 일정 크기만큼의 공간의
