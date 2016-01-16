@@ -4,7 +4,6 @@ all: build
 
 build: mbr.bin vbr.bin
 	make $(MAKEOPTS) -C ./install
-	./install/install -device-path=$(DRIVE_DEV) -mbr-path=mbr.bin -vbr-path=vbr.bin
 
 vbr.bin: vbr.asm
 	nasm vbr.asm -o vbr.bin

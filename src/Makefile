@@ -42,6 +42,7 @@ else
 		make $(MAKEOPTS) -C ./mbr
 		make $(MAKEOPTS) -C ./loader
 		make $(MAKEOPTS) -C ./kernel
+		./mbr/install/install -device-path=$(DRIVE_DEV) -mbr-path=./mbr/mbr.bin -vbr-path=./mbr/vbr.bin
            
     run:
 		$(SUDO) qemu-system-x86_64 -m 64 -hda $(DRIVE_DEV)

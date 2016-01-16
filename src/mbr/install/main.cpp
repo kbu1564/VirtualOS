@@ -148,6 +148,10 @@ int main(int argc, char* argv[]) {
                             printf("  Partition Entry #%d SystemID   : %s\n", i + 1, systemID);
                             printf("  Partition Entry #%d DeviceSize : %.02fGB\n", i + 1, (bpb->TotalSectors / 1024.0 * bpb->BytesPerSector / 1024.0 / 1024.0));
 
+                            // calc root directory number
+                            int rootdirectory = bpb->TotalFATs * bpb->BigSectorsPerFAT + bpb->ReservedSectors + bpb->HiddenSectors;
+                            printf("  Partition Root Directory Entry : %d\n", rootdirectory);
+
                             //--------------------------------------------------------------------------------
                             // Write to MBR BootCode
                             //--------------------------------------------------------------------------------

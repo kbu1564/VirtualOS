@@ -1,7 +1,8 @@
-extern "C" void kPrint32(int pos, const char* str);
+#include <stdio.h>
+
 void main()
 {
-    kPrint32(80 * 2 * 4, "Hello C++ Kernel!!");
+    kClean(0, 80 * 25);
+    kPrint(0, "Hello C++ Kernel!!");
     while (1);
 }
-
