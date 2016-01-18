@@ -124,7 +124,6 @@ main:               xor ax, ax
                     mul ecx
 
                     add eax, dword [StartSector]
-                    ;add eax, dword [HiddenSectors]
 
                     mov dword [StartSector], eax
                     mov word [DiskAddressPacket + 4], LoadAddress
@@ -139,7 +138,6 @@ main:               xor ax, ax
 .success:           xor ax, ax
                     mov es, ax
 
-                    ;mov si, LoadAddress
                     jmp LoadAddress
 
 .failed:            mov ax, 0xB800

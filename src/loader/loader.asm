@@ -1,8 +1,6 @@
 [bits 16]
 [org 0x9000]
 
-GPTAddress          equ 0x0600
-
 main:               xor ax, ax
                     mov es, ax
                     mov ds, ax
@@ -29,14 +27,19 @@ main:               xor ax, ax
                     ; edx:eax = eax * r32
                     add eax, ebx
 
+                    ; Supported MBR and GPT (GPT or not thing)
                     cmp word [GPTAddress + 510], 0xAA55
-                    jne .mbrboot
-
+                    jne .mbrboot1
                     add eax, dword [HiddenSectors]
+
                     ; ax = ax + r16
                     ;----------------------------------
                     ; RootDir의 위치 : eax
-.mbrboot:           mov dword [StartSector], eax
+
+                    ; file search!!
+                    ;------------------------------------------------------------------------
+.mbrboot1:          mov dword [StartSector], eax
+                    mov dword [RootDirectoryEntry], eax
 
                     ; 디스크의 데이터를 읽어오기 위해 인터럽트를 호출한다.
                     mov ah, 0x42
@@ -66,29 +69,81 @@ main:               xor ax, ax
                     ; dx의 1바이트가 si의 1바이트와 같으면 루프 계속 다르면 다음 파일정보 찾기
                     ; 주소 지정용 레지스터 : bx, si, di, bp, sp
 
-                    add bx, 1
-                    add si, 1
+                    inc bx
+                    inc si
                     loop .compare
                     ; for (int i = ??; i > 0; i--) { ... }
-                    jmp .video
+                    jmp .readcluster
 
 .next:              add di, 0x20
                     jmp .find
+                    ;------------------------------------------------------------------------
 
-.video:             xor eax, eax
+.readcluster:       xor eax, eax
                     ; 이 시점에 위치한 상태인 경우 원하는 파일을 찾은 상태이다.
-                    mov ax, word [di + 20]
-                    shl eax, 16
-                    mov ax, word [di + 26]
-                    sub eax, 2
-                    ; 이때의 eax 값이 파일 정보가 저장된 클러스터 위치 값이다.
-                    mov ecx, 0
-                    mov cl, byte [SectorsPerCluster]
-                    mul ecx
+                    ;------------------------------------------------------------------------
+                    ; Cluster Linked List (FAT 찾기)
+                    ; ClusterLinkedList = ReservedSectors + BigSectorsPerFAT + HiddenSectors
+                    mov ax, word [ReservedSectors]
+                    add eax, dword [BigSectorsPerFAT]
 
-                    add eax, dword [StartSector]
-                    mov dword [StartSector], eax
-                    mov  word [DiskAddressPacket + 4], 0xA000
+                    ; Supported MBR and GPT (GPT or not thing)
+                    cmp word [GPTAddress + 510], 0xAA55
+                    jne .mbrboot2
+                    add eax, dword [HiddenSectors]
+
+.mbrboot2:          mov dword [StartSector], eax
+
+                    xor cx, cx
+                    mov cl, byte [SectorsPerCluster]
+                    mov word [DiskAddressPacket + 2], cx
+                    mov word [DiskAddressPacket + 4], FATArea
+
+                    ; 디스크의 데이터를 읽어오기 위해 인터럽트를 호출한다.
+                    mov ah, 0x42
+                    mov dl, byte [BootDiskNumber]
+                    mov si, DiskAddressPacket
+                    int 0x13
+                    jc .shutdown
+                    ;------------------------------------------------------------------------
+
+                    ; file start cluster
+                    xor eax, eax
+                    mov ax, word [di + HightStartCluster]
+                    shl eax, 16
+                    mov ax, word [di + LowStartCluster]
+
+                    ; FAT index list 를 이용하여 파일 전부 읽기
+                    ; get next cluster pointer
+                    ;------------------------------------------------------------------------
+                    ; 커널파일은 LoadAddress 번지에 로드
+                    mov ebx, LoadAddress
+.run:               mov ecx, eax
+                    and ecx, 0x0FFFFFF8
+                    cmp ecx, 0x0FFFFFF8
+                    je .eof
+
+                    ; get next cluster index
+                    mov edi, eax
+                    shl edi, 2
+                    add edi, FATArea
+
+                    sub eax, dword [RootDirectoryStart]
+                    ; 이때의 eax 값이 파일 정보가 저장된 RootDirectory 기준으로 부터의 클러스터 위치 값이다.
+
+                    ; cluster 단위 -> sector 단위로 변환
+                    xor ecx, ecx
+                    mov cl, byte [SectorsPerCluster]
+                    mul ecx ; eax = eax * ecx
+                    add eax, dword [RootDirectoryEntry]
+
+                    mov dword [StartSector], eax         ; read sector
+                    ; 1 cluster 읽기
+                    mov word [DiskAddressPacket + 4], bx ; offset
+                    mov eax, ebx
+                    and eax, 0xFFFF0000
+                    shr eax, 1
+                    mov word [DiskAddressPacket + 6], ax ; segment
 
                     ; 디스크의 데이터를 읽어오기 위해 인터럽트를 호출한다.
                     mov ah, 0x42
@@ -97,7 +152,23 @@ main:               xor ax, ax
                     int 0x13
                     jc .shutdown
 
-                    cli
+                    ; next loop
+                    xor eax, eax
+                    xor ecx, ecx
+                    mov cl, byte [SectorsPerCluster]
+                    mov ax, word [BytesPerSector]
+                    mul ecx
+                    add ebx, eax
+                    ; next save memory address = ebx + (SectorPerCluster * BytePerSector)
+
+                    ; next cluster entry point
+                    ; ecx = FATArea + eax * 4
+                    mov eax, dword [edi]
+                    jmp .run
+                    ;------------------------------------------------------------------------
+
+                    ; eof(end of file)
+.eof:               cli
                     ;인터럽트 호출 중지
   
                     lgdt [GDTR]
@@ -118,6 +189,24 @@ main:               xor ax, ax
 .shutdown:          hlt
                     jmp .shutdown
 
+LoadAddress         equ 0xA000
+GPTAddress          equ 0x0600
+FATArea             equ 0x1000
+; File Allocation Table
+FileName            equ 0x00
+FilenameExtension   equ 0x08
+FileFlag            equ 0x0B
+Unused              equ 0x0C
+HightStartCluster   equ 0x14
+Time                equ 0x16
+Date                equ 0x18
+LowStartCluster     equ 0x1A
+FileSize            equ 0x1C
+
+FirstLongFileName   equ 0x01
+SecondLongFileName  equ 0x0E
+ThirdLongFileName   equ 0x1C
+
 ; Bios Parameter Block
 BPBArea             equ 0x7C03
 BytesPerSector      equ BPBArea + 8
@@ -126,8 +215,10 @@ ReservedSectors     equ BPBArea + 11
 TotalFATs           equ BPBArea + 13
 HiddenSectors       equ BPBArea + 25
 BigSectorsPerFAT    equ BPBArea + 33
+RootDirectoryStart  equ BPBArea + 41
 BootDiskNumber      equ BPBArea + 61
 
+RootDirectoryEntry  dd 0
 KernelName          db 'MAIN    ', 'O  '
 ;-----------------------------------------
 DiskAddressPacket   db 0x10, 0 ; 구조체 크기
