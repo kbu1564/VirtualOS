@@ -1,17 +1,13 @@
+#include <types.h>
 #include <stdio.h>
 
-void kPrint(const int pos, const char* str) {
-    char* videoAddr = (char*)(0xb8000 + pos * 2);
-    while (*str != 0) {
-        *(videoAddr++) = *str++;
-        *(videoAddr++) = 0x04;
-    }
-}
+unsigned char g_color        = 0x04;
+char*         g_videoPointer = (char*)0xb8000;
 
-void kClean(const int pos, const int size) {
-    char* videoAddr = (char*)(0xb8000 + pos * 2);
-    for (int i = 0; i < size; i++) {
-        *(videoAddr++) = ' ';
-        *(videoAddr++) = 0x04;
+void puts(const char* str) {
+    char c;
+    while ((c = *str++) != '\0') {
+        *(g_videoPointer++) = c;
+        *(g_videoPointer++) = g_color;
     }
 }

@@ -1,27 +1,74 @@
 [bits 16]
-[org 0x9000]
+[org 0x7C00]
 
-main:               xor ax, ax
+jmp main
+nop
+
+GPTAddress          equ 0x0600
+RDAddress           equ 0xA000
+FATArea             equ 0x1000
+LoadAddress         equ 0xA000
+
+; File Allocation Table
+FileName            equ 0x00
+FilenameExtension   equ 0x08
+FileFlag            equ 0x0B
+Unused              equ 0x0C
+HightStartCluster   equ 0x14
+Time                equ 0x16
+Date                equ 0x18
+LowStartCluster     equ 0x1A
+FileSize            equ 0x1C
+
+;-----------------------------------------
+; File Allocation Table
+;-----------------------------------------
+OemID               db "MSDOS5.0"
+BytesPerSector      dw 0x0200
+SectorsPerCluster   db 0x08
+ReservedSectors     dw 0x073E
+TotalFATs           db 0x02
+MaxRootEntries      dw 0x0000
+NumberOfSectors     dw 0x0000
+MediaDescriptor     db 0xF8
+SectorsPerFAT       dw 0x0000
+SectorsPerTrack     dw 0x003F
+SectorsPerHead      dw 0x00FF
+HiddenSectors       dd 0x00000000 ; GPT 지원을 위한 해당 MBR의 물리적 섹터의 위치
+TotalSectors        dd 0x00F007FD
+BigSectorsPerFAT    dd 0x00003C61
+Flags               dw 0x0000
+FSVersion           dw 0x0000
+RootDirectoryStart  dd 0x00000002
+FSInfoSector        dw 0x0001
+BackupBootSector    dw 0x0006
+
+Reserved1           dd 0
+Reserved2           dd 0
+Reserved3           dd 0
+
+BootDiskNumber      db 0x80
+Reserved4           db 0
+Signature           db 0x29
+VolumeID            dd 0x728158D5
+VolumeLabel         db "OSUSB      "
+SystemID            db "FAT32   "
+
+;-----------------------------------------
+; Bootloader Main Function
+;-----------------------------------------
+main:               xor eax, eax
                     mov es, ax
                     mov ds, ax
+                    mov ss, ax
                     mov fs, ax
                     mov gs, ax
+                    mov sp, 0xFFF8
 
-                    ; boot(0x7c00) -> booting!! -> find loader.sys -> jmp loader.asm:main
-                    ; video memory(0xb8000) 여기서 일정 크기만큼의 공간의
-                    ; 메모리의 값을 화면에 지속적으로 출력!! - GPU
-                    ; ---------------
-                    ; | char | attr |
-                    ; ---------------
-
-                    ; c++ idiom, 아키텍쳐 패턴
                     ; 이곳에서 미리 C언어 커널 파일을 로드한다.
-                    xor eax, eax
-                    xor ebx, ebx
-                    xor ecx, ecx
-.loader:            mov cl, byte [TotalFATs]
+.loader:            movzx ecx, byte [TotalFATs]
                     mov eax, dword [BigSectorsPerFAT]
-                    mov bx, word [ReservedSectors]
+                    movzx ebx, word [ReservedSectors]
                     mul ecx
                     ; dx:ax = ax * r16
                     ; edx:eax = eax * r32
@@ -38,26 +85,25 @@ main:               xor ax, ax
 
                     ; file search!!
                     ;------------------------------------------------------------------------
-.mbrboot1:          mov dword [StartSector], eax
-                    mov dword [RootDirectoryEntry], eax
+.mbrboot1:          mov dword [DiskAddressPacket + 8], eax
+                    mov dword [RDStartSector], eax
 
                     ; 디스크의 데이터를 읽어오기 위해 인터럽트를 호출한다.
                     mov ah, 0x42
                     mov dl, byte [BootDiskNumber]
                     mov si, DiskAddressPacket
                     int 0x13
-                    jc .shutdown
-                    ; RootDirEntry의 내용이 구해짐(폴더에 뭐있는지에 대한 목록이 구해짐)
-                    ; 0x8000 -> loader.sys 파일을 찾아야되 -> 데이터가 저장된 위치를 찾고
-                    ; -> 찾은 위치를 int 0x13 이용해서 0x8000번지 메모리에 적재 -> jmp 0x8000
-                    
-                    ; 읽은 RootDirEntry로 부터 loader.sys파일을 찾는다
-                    mov di, 0x8000
+                    jc .failed
+
+                    ; 읽은 RootDirEntry로 부터 파일을 찾는다
+                    mov di, RDAddress
 .find:              mov cl, byte [di]
                     cmp cl, 0xE5
                     je .next
                     ; 만약 첫번째 바이트가 0xE5 ?? => 삭제된 파일
                     ; 삭제된게 아닐경우 파일이름 비교
+                    test cl, cl
+                    jz .failed
 
                     ; 이 부분이 실행된다는 것은 삭제된 파일이 아니라는 것이다.
                     mov cx, 8
@@ -92,7 +138,7 @@ main:               xor ax, ax
                     jne .mbrboot2
                     add eax, dword [HiddenSectors]
 
-.mbrboot2:          mov dword [StartSector], eax
+.mbrboot2:          mov dword [DiskAddressPacket + 8], eax
 
                     xor cx, cx
                     mov cl, byte [SectorsPerCluster]
@@ -104,11 +150,16 @@ main:               xor ax, ax
                     mov dl, byte [BootDiskNumber]
                     mov si, DiskAddressPacket
                     int 0x13
-                    jc .shutdown
+                    jc .failed
                     ;------------------------------------------------------------------------
 
+                    ; 1cluster가 몇 bytes 인지 계산
+                    movzx ecx, byte [SectorsPerCluster]
+                    movzx eax, word [BytesPerSector]
+                    mul ecx
+                    mov dword [BytesPerCluster], eax
+
                     ; file start cluster
-                    xor eax, eax
                     mov ax, word [di + HightStartCluster]
                     shl eax, 16
                     mov ax, word [di + LowStartCluster]
@@ -123,7 +174,11 @@ main:               xor ax, ax
                     cmp ecx, 0x0FFFFFF8
                     je .eof
 
+                    ; 2016-01-19 : 올바르게 클러스터에 대한 파일 정보가 로드되지 않고 있음
+                    ;   원인) Cluster Linked Array와 Root Directory Entry Table의 로드 주소가 같아서 발생
+                    ; 2016-01-19 : 이후 realmode를 위한 putc(char c); 함수 필요
                     ; get next cluster index
+                    ; edi = FATArea + edi * 4
                     mov edi, eax
                     shl edi, 2
                     add edi, FATArea
@@ -132,37 +187,31 @@ main:               xor ax, ax
                     ; 이때의 eax 값이 파일 정보가 저장된 RootDirectory 기준으로 부터의 클러스터 위치 값이다.
 
                     ; cluster 단위 -> sector 단위로 변환
-                    xor ecx, ecx
-                    mov cl, byte [SectorsPerCluster]
+                    movzx ecx, byte [SectorsPerCluster]
                     mul ecx ; eax = eax * ecx
-                    add eax, dword [RootDirectoryEntry]
+                    add eax, dword [RDStartSector]
 
-                    mov dword [StartSector], eax         ; read sector
-                    ; 1 cluster 읽기
-                    mov word [DiskAddressPacket + 4], bx ; offset
+                    mov dword [DiskAddressPacket + 8], eax ; read sector
+
                     mov eax, ebx
                     and eax, 0xFFFF0000
                     shr eax, 1
-                    mov word [DiskAddressPacket + 6], ax ; segment
+                    ; 1 cluster 읽기
+                    mov word [DiskAddressPacket + 4], bx   ; offset
+                    mov word [DiskAddressPacket + 6], ax   ; segment
 
                     ; 디스크의 데이터를 읽어오기 위해 인터럽트를 호출한다.
                     mov ah, 0x42
                     mov dl, byte [BootDiskNumber]
                     mov si, DiskAddressPacket
                     int 0x13
-                    jc .shutdown
+                    jc .failed
 
                     ; next loop
-                    xor eax, eax
-                    xor ecx, ecx
-                    mov cl, byte [SectorsPerCluster]
-                    mov ax, word [BytesPerSector]
-                    mul ecx
-                    add ebx, eax
+                    add ebx, dword [BytesPerCluster]
                     ; next save memory address = ebx + (SectorPerCluster * BytePerSector)
 
                     ; next cluster entry point
-                    ; ecx = FATArea + eax * 4
                     mov eax, dword [edi]
                     jmp .run
                     ;------------------------------------------------------------------------
@@ -170,108 +219,49 @@ main:               xor ax, ax
                     ; eof(end of file)
 .eof:               cli
                     ;인터럽트 호출 중지
-  
-                    lgdt [GDTR]
-                    ;Load GDT
-
-                    ; 32bit 모드로 전환
-                    mov eax, cr0
-                    or eax, 0x00000001
-                    mov cr0, eax
 
                     jmp $+2
                     ; $는 현재 주소
                     nop
                     nop
                     ; 혹시 남아 있을지도 모르는 명령어를 지우는 목적으로 nop을 쓴다.
-                    jmp dword CodeDescriptor:_protect_start
+                    jmp dword 0:LoadAddress
+
+.failed:            mov ax, 0xB800
+                    mov es, ax
+
+                    mov si, ErrorMsg
+                    xor di, di
+.print:             mov cl, byte [si]
+                    cmp cl, 0
+                    je .shutdown
+
+                    mov byte [es:di], cl
+                    add di, 1
+                    mov byte [es:di], 0x04
+                    inc di
+                    inc si
+                    jmp .print
 
 .shutdown:          hlt
                     jmp .shutdown
 
-LoadAddress         equ 0xA000
-GPTAddress          equ 0x0600
-FATArea             equ 0x1000
-; File Allocation Table
-FileName            equ 0x00
-FilenameExtension   equ 0x08
-FileFlag            equ 0x0B
-Unused              equ 0x0C
-HightStartCluster   equ 0x14
-Time                equ 0x16
-Date                equ 0x18
-LowStartCluster     equ 0x1A
-FileSize            equ 0x1C
-
-FirstLongFileName   equ 0x01
-SecondLongFileName  equ 0x0E
-ThirdLongFileName   equ 0x1C
-
-; Bios Parameter Block
-BPBArea             equ 0x7C03
-BytesPerSector      equ BPBArea + 8
-SectorsPerCluster   equ BPBArea + 10
-ReservedSectors     equ BPBArea + 11
-TotalFATs           equ BPBArea + 13
-HiddenSectors       equ BPBArea + 25
-BigSectorsPerFAT    equ BPBArea + 33
-RootDirectoryStart  equ BPBArea + 41
-BootDiskNumber      equ BPBArea + 61
-
-RootDirectoryEntry  dd 0
-KernelName          db 'MAIN    ', 'O  '
+BytesPerCluster     dd 0 ; 속도 향상을 위한 1cluster = ?bytes 기록
+RDStartSector       dd 0 ; 속도 향상을 위한 RootDirectory 기록
+KernelName          db 'KERNEL  ', 'O  '
 ;-----------------------------------------
-DiskAddressPacket   db 0x10, 0 ; 구조체 크기
-                    dw 8       ; 읽고자 하는 섹터의 개수
-                    dw 0x8000
-                    dw 0x0000
-StartSector         dq 0
+; Disk Address Packet
 ;-----------------------------------------
+DiskAddressPacket   db 0x10, 0       ; 구조체 크기
+                    dw 8             ; 읽고자 하는 섹터의 개수
+                    dw RDAddress     ; offset
+                    dw 0x0000        ; segment
+                    dq 0
 
-GDTR                dw GDTEND - GDT - 1
-                    dd GDT
-GDT:
-  NullDescriptor    equ 0x00
-                    dw 0x0000 ; limit
-                    dw 0x0000 ; baseaddr
-                    db 0x00   ; baseaddr
-                    db 0x00   ; P DPL S TYPE
-                    db 0x00   ; G D AVL limit
-                    db 0x00   ; baseaddr
+;-----------------------------------------
+; Etc Datas
+;-----------------------------------------
+ErrorMsg            db "read file error!!", 0
 
-  CodeDescriptor    equ 0x08
-                    dw 0xFFFF
-                    dw 0x0000
-                    db 0x00
-                    db 0x9A
-                    db 0xCF
-                    db 0x00
-
-  DataDescriptor    equ 0x10
-                    dw 0xFFFF
-                    dw 0x0000
-                    db 0x00
-                    db 0x92
-                    db 0xCF
-                    db 0x00
-
-  VideoDescriptor   equ 0x18
-                    dw 0xFFFF
-                    dw 0x8000
-                    db 0x0B
-                    db 0x92
-                    db 0x4F
-                    db 0x00
-GDTEND:
-
-[bits 32]
-
-_protect_start:     mov ax, DataDescriptor
-                    mov es, ax
-                    mov ds, ax
-                    mov fs, ax
-                    mov gs, ax
-
-                    jmp 0xA000
-
-ProtectModeMsg      db 'Hello, ProtectMode!!', 0
+times 510-($-$$)    db 0x00
+                    dw 0xAA55

@@ -25,7 +25,7 @@ ifeq ($(DRIVE_NAME), $(EMPTY))
 		$(Q) echo "Useage : make DRIVE_NAME=input_your_usb_drive_label_name [all|run]"
 		$(Q) echo "example : make DRIVE_NAME=OSUSB [all|run]"
 else
-    all: build
+    all: clean build
 
     # 운영체제 버전별 명령어 셋팅
     OS_DETECTING     = $(shell uname -s)
@@ -36,19 +36,20 @@ else
     DRIVE_DEV       := $(shell mount | grep $(DRIVE_NAME) | awk '{split($$0,arr," "); print arr[1];}')
     DRIVE_DEV       := $(subst /dev/disk,/dev/rdisk,$(DRIVE_DEV))
     DRIVE_DIR       := $(shell mount | grep $(DRIVE_NAME) | awk '{split($$0,arr," "); print arr[3];}')
-    MAKEOPTS        := CC="$(CC)" CXX="$(CXX)" LD="$(LD)" OBJCOPY="$(OBJCOPY)" CC32="$(CC32)" CXX32="$(CXX32)" DRIVE_DEV="$(DRIVE_DEV)" DRIVE_DIR="$(DRIVE_DIR)" SUDO="$(SUDO)"
+    MAKEOPTS        := Q="$(Q)" CC="$(CC)" CXX="$(CXX)" LD="$(LD)" OBJCOPY="$(OBJCOPY)" CC32="$(CC32)" CXX32="$(CXX32)" DRIVE_DEV="$(DRIVE_DEV)" DRIVE_DIR="$(DRIVE_DIR)" SUDO="$(SUDO)"
+
+    bootwriter:
+		$(Q) make $(MAKEOPTS) -C ./boot/install
+		./boot/install/install -device-path=$(DRIVE_DEV) -mbr-path=./boot/mbr.bin -vbr-path=./boot/vbr.bin
 
     build:
-		make $(MAKEOPTS) -C ./mbr
-		make $(MAKEOPTS) -C ./loader
-		make $(MAKEOPTS) -C ./kernel
-		./mbr/install/install -device-path=$(DRIVE_DEV) -mbr-path=./mbr/mbr.bin -vbr-path=./mbr/vbr.bin
-           
+		$(Q) make $(MAKEOPTS) -C ./boot
+		$(Q) make $(MAKEOPTS) -C ./kernel
+		
     run:
 		$(SUDO) qemu-system-x86_64 -m 64 -hda $(DRIVE_DEV)
-           
+
     clean:
-		make $(MAKEOPTS) -C ./mbr    clean
-		make $(MAKEOPTS) -C ./loader clean
-		make $(MAKEOPTS) -C ./kernel clean
+		$(Q) make $(MAKEOPTS) -C ./boot clean
+		$(Q) make $(MAKEOPTS) -C ./kernel clean
 endif
