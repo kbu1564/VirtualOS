@@ -11,3 +11,4 @@ void puts(const char* str) {
         *(g_videoPointer++) = g_color;
     }
 }
+
