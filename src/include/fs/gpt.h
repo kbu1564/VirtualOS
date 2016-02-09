@@ -1,38 +1,40 @@
 #ifndef _FS_GPT_H_
 #define _FS_GPT_H_
 
-typedef struct {
-    unsigned char  BootIndicator;
+// gpt entry
+struct gpt_entry {
+    u8  bootIndicator;
     union {
         struct {
-            unsigned char  StartingHead;
-            unsigned short StartingSector : 6;
-            unsigned short StartCylinder  : 10;
-            unsigned char  SystemID;
-            unsigned char  EndingHead;
-            unsigned short EndingSector   : 6;
-            unsigned short EndingCylinder : 10;
-            unsigned int   RelativeSector;
-            unsigned int   totalSectors;
+            u8  startingHead;
+            u8  startingSector : 6;
+            u16 startCylinder  : 10;
+            u8  systemID;
+            u8  endingHead;
+            u8  endingSector   : 6;
+            u16 endingCylinder : 10;
+            u32 relativeSector;
+            u32 totalSectors;
         } __attribute__((packed)) chs;
 
         struct {
-            unsigned char  Signature1;
-            unsigned short PartitionStartHigh;
-            unsigned char  SystemID;
-            unsigned char  Signature2;
-            unsigned short PartitionLengthHigh;
-            unsigned int   PartitionStartLow;
-            unsigned int   PartitionLengthLow;
+            u8  signature1;
+            u16 partitionStartHigh;
+            u8  systemID;
+            u8  signature2;
+            u16 partitionLengthHigh;
+            u32 partitionStartLow;
+            u32 partitionLengthLow;
         } __attribute__((packed)) lba;
     } type;
-} __attribute__((packed)) gpt_entry;
+} __attribute__((packed));
 
-typedef struct {
-    unsigned char  byteCode[446];
-    gpt_entry      gpt[4];
-    unsigned short MBRSignature;
-} __attribute__((packed)) gpt_status;
+// gpt parameter
+struct gpt_param {
+    u8               byteCode[446];
+    struct gpt_entry gpts[4];
+    u16              mbrSignature;
+} __attribute__((packed));
 
 #endif
 
