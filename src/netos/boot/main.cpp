@@ -2,6 +2,8 @@
 #include <boot/realmode.h>
 #include <fs/gpt.h>
 
+#include <stdlib.h>
+
 struct gpt_param gpt_param;
 // pushad 함수의 레지스터 push 순서
 // EAX(0x1C) -> ECX(0x18) -> EDX(0x14) -> EBX(0x10) -> ESP(0xC) -> EBP(0x8) -> ESI(0x4) -> EDI(0x0)
@@ -60,9 +62,40 @@ struct reg_param {
   };
 };
 
-inline void init_regs(struct reg_param& regs) {
+inline void get_registers(struct reg_param& regs) {
   // __asm__ __volatile__ (asms : output : input : clobber);
-  __asm__ __volatile__ ("pushad");
+  struct reg_param* reg_param_origin = nullptr;
+  asm volatile (
+    "pushad               \n\t"
+    "movd %%esp, %0       \n\t"
+    :
+    : "m" (reg_param_origin)
+  );
+
+  memcpy(&regs, reg_param_origin, sizeof(struct reg_param));
+  asm volatile ( "popad" :: );
+  asm volatile ( "" ::: "memory" );
+}
+
+struct reg_param* intcall(const u8 callno, struct reg_param* regs) {
+  struct reg_param* reg_param_origin = nullptr;
+  asm volatile (
+    "pushad               \n\t"
+    "movd %%esp, %0       \n\t"
+    :
+    : "m" (reg_param_origin)
+  );
+
+  memcpy(reg_param_origin, regs, sizeof(struct reg_param));
+  asm volatile (
+    "popad                \n\t"
+    "int %0               \n\t"
+    :
+    : "i" (callno)
+  );
+  asm volatile ( "" ::: "memory" );
+
+  return nullptr;
 }
 
 void main() {
