@@ -65,6 +65,7 @@ struct reg_param {
 inline void get_registers(struct reg_param& regs) {
   // __asm__ __volatile__ (asms : output : input : clobber);
   struct reg_param* reg_param_origin = nullptr;
+
   asm volatile (
     "pushad               \n\t"
     "movd %%esp, %0       \n\t"
@@ -74,11 +75,12 @@ inline void get_registers(struct reg_param& regs) {
 
   memcpy(&regs, reg_param_origin, sizeof(struct reg_param));
   asm volatile ( "popad" :: );
-  asm volatile ( "" ::: "memory" );
 }
 
-struct reg_param* intcall(const u8 callno, struct reg_param* regs) {
+struct u32 intcall(const u8 callno, struct reg_param* regs) {
+  u32 result_eax = 0;
   struct reg_param* reg_param_origin = nullptr;
+
   asm volatile (
     "pushad               \n\t"
     "movd %%esp, %0       \n\t"
@@ -90,12 +92,11 @@ struct reg_param* intcall(const u8 callno, struct reg_param* regs) {
   asm volatile (
     "popad                \n\t"
     "int %0               \n\t"
-    :
+    : "=&a" (result_eax)
     : "i" (callno)
   );
-  asm volatile ( "" ::: "memory" );
 
-  return nullptr;
+  return result_eax;
 }
 
 void main() {
