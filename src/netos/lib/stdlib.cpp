@@ -1,3 +1,4 @@
+#include <types.h>
 #include <stdlib.h>
 
 void* memcpy(void* dest, const void* src, size_t n) {
@@ -9,7 +10,7 @@ void* memcpy(void* dest, const void* src, size_t n) {
 
 void* memset(void* src, const u8 data, size_t n) {
   u8* p_src = (u8*)src;
-  for (int i = 0; i < n; i++) p_src++ = data;
+  for (int i = 0; i < n; i++) *p_src++ = data;
   return src;
 }
 
