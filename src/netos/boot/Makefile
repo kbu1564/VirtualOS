@@ -1,6 +1,6 @@
 all: install
 
-CXXFLAGS = -c -g -Os -m16 -ffreestanding -fno-stack-protector
+CXXFLAGS = -c -g -O2 -m16 -ffreestanding -fno-stack-protector
 LDFLAGS = -melf_i386 -static -nmagic -nostdlib
 INCLUDE_PATH = ../../include
 
