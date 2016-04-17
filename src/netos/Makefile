@@ -6,7 +6,7 @@ CXX     := $(CROSS_COMPILE_DIR)/$(PREFIX)g++
 LD      := $(CROSS_COMPILE_DIR)/$(PREFIX)ld
 OBJCOPY := $(CROSS_COMPILE_DIR)/$(PREFIX)objcopy
 CC32    := $(CC) -m32
-CXX32   := $(CXX) -m32
+CXX32   := $(CXX) -m32 -std=c++11
 
 #####################################################################
 # Makefile 을 이용한 환경 셋팅값 적용 부분
